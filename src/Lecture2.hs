@@ -53,7 +53,7 @@ zero, you can stop calculating product and return 0 immediately.
 84
 -}
 lazyProduct :: [Int] -> Int
-lazyProduct [] = 0
+lazyProduct [] = 1
 lazyProduct (0 : _) = 0
 lazyProduct [x] = x
 lazyProduct (x : xs) = x * lazyProduct xs
@@ -83,6 +83,7 @@ removeAt :: Int -> [a] -> (Maybe a, [a])
 removeAt _ [] = (Nothing, [])
 removeAt 0 (x : xs) = (Just x, xs)
 removeAt n (x : xs) =
+  if n < 0 then (Nothing, x:xs) else
   let
     (res, xs') = removeAt (n - 1) xs
   in
@@ -115,7 +116,7 @@ spaces.
 🕯 HINT: look into Data.Char and Prelude modules for functions you may use.
 -}
 dropSpaces :: String -> String
-dropSpaces = filter (not . isSpace)
+dropSpaces = takeWhile (not . isSpace) . dropWhile isSpace
 
 {- |
 
@@ -226,7 +227,7 @@ isIncreasing :: [Int] -> Bool
 isIncreasing [] = True
 isIncreasing [_] = True
 isIncreasing [x, y] = x < y
-isIncreasing (x : y : xs) = x < y && isIncreasing(y : xs)
+isIncreasing (x : y : xs) = x < y && isIncreasing (y : xs)
 
 {- | Implement a function that takes two lists, sorted in the
 increasing order, and merges them into new list, also sorted in the
@@ -273,7 +274,6 @@ mergeSort as = let
   sl2 = mergeSort l2
   in
     merge sl1 sl2
-
 
 {- | Haskell is famous for being a superb language for implementing
 compilers and interpreters to other programming languages. In the next
@@ -325,7 +325,21 @@ data EvalError
 It returns either a successful evaluation result or an error.
 -}
 eval :: Variables -> Expr -> Either EvalError Int
-eval = error "TODO"
+eval _ (Lit a) = Right a
+eval vs (Var v) = result (lookup v vs) v
+eval vs (Add e1 e2) =
+  let
+    ev1 = eval vs e1
+    ev2 = eval vs e2
+  in
+    case (ev1, ev2) of
+    (Left a, _) -> Left a
+    (_, Left b) -> Left b
+    (Right x, Right y) -> Right (x + y)
+
+result :: Maybe Int -> String -> Either EvalError Int
+result Nothing v = Left (VariableNotFound v)
+result (Just x) _ = Right x
 
 {- | Compilers also perform optimizations! One of the most common
 optimizations is "Constant Folding". It performs arithmetic operations
@@ -349,4 +363,24 @@ Write a function that takes and expression and performs "Constant
 Folding" optimization on the given expression.
 -}
 constantFolding :: Expr -> Expr
-constantFolding = error "TODO"
+constantFolding (Add (Lit a) (Lit b)) = Lit (a + b)
+constantFolding (Add e (Lit 0)) = e
+constantFolding (Add (Lit 0) e) = e
+constantFolding (Add (Add e (Lit a)) (Lit b)) = constantFolding (Add (Lit (a + b)) e)
+constantFolding (Add (Add (Lit a) e) (Lit b)) = constantFolding (Add (Lit (a + b)) e)
+constantFolding (Add (Lit b) (Add e (Lit a))) = constantFolding (Add (Lit (a + b)) e)
+constantFolding (Add (Lit b) (Add (Lit a) e)) = constantFolding (Add (Lit (a + b)) e)
+constantFolding (Add (Var x) (Lit a)) = Add (Lit a) (Var x) --here's where the reordering happens
+constantFolding (Add (Lit a) (Var x)) = Add (Lit a) (Var x)
+constantFolding (Add (Add (Lit a) e1) (Add (Lit b) e2)) = let
+  summed = a + b
+  in
+    Add (Lit summed) (constantFolding (Add e1 e2))
+constantFolding (Add e1 e2) =
+  let
+    r1 = constantFolding e1 
+    r2 = constantFolding e2
+  in
+    if r1 == e1 && r2 == e2 then Add e1 e2 else constantFolding (Add r1 r2)
+constantFolding x = x
+
